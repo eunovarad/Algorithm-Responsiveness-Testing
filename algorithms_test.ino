@@ -1,22 +1,34 @@
-#included <Servo.h>
+#include <Servo.h>
 
-Servo Servo1;  //create Servo object
+Servo Servo1;
 
-int Servo1Pin= 9; //Signal pin to connect to servo
+int Servo1Pin = 9;   // Signal pin for servo
+int ButtonPin = A7;  // using A7 as input for button
 
 void setup() {
   Servo1.attach(Servo1Pin);
+  pinMode(ButtonPin, INPUT);  // external pulldown resistor
 }
 
 void loop() {
-  // Move from 45 to 90 degrees
-  for (int angle = 45; angle <= 90; angle += 1) {
-    myServo.write(angle);
-    delay(15);
-  }
-  // Move from 90 to 45 degrees
-  for (int angle = 90; angle <= 45; angle += 1) {
-    myServo.write(angle);
-    delay(15);
+  int ButtonState = digitalRead(ButtonPin);
+
+  // Print the raw button state
+  Serial.print("Button state: ");
+  Serial.println(ButtonState);
+
+  // Optional: small delay so the monitor is readable
+  delay(100);
+
+  if (ButtonState == HIGH) {
+    for (int angle = 45; angle <= 90; angle++) {
+      Servo1.write(angle);
+      delay(15);
+    }
+
+    for (int angle = 90; angle >= 45; angle--) {
+      Servo1.write(angle);
+      delay(15);
+    }
   }
 }
