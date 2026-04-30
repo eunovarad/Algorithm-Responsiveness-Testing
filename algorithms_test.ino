@@ -80,11 +80,11 @@ void loop() {
   // Segment selection
   if (elapsed < 15000UL) {
     setSegment(SEG1);
-    timeBasedSweep(15000UL, 4);   // Section 1: 4 rotations (slow)
+    timeBasedSweep(15000UL, 2);   // Section 1: 4 rotations (slow)
   }
   else if (elapsed < 30000UL) {
     setSegment(SEG2);
-    timeBasedSweep(15000UL, 8);   // Section 2: same motion, faster
+    timeBasedSweep(15000UL, 4);   // Section 2: same motion, faster
   }
   else if (elapsed < 45000UL) {
     setSegment(SEG3);
