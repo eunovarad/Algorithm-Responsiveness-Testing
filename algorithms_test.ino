@@ -10,7 +10,7 @@ const int MIN_ANGLE = 45;
 const int MAX_ANGLE = 135;
 const int CENTER    = 90;
 
-// Deterministic scripted positions (appear random)
+// Deterministic, hand-chosen "random-looking" positions
 const int scriptedPositions[] = {
   52, 128, 67, 111, 59, 134, 76,
   98, 121, 63, 110, 85
@@ -41,7 +41,7 @@ void setup() {
   pinMode(BUTTON_PIN, INPUT);   // external pull-down
   servo.attach(SERVO_PIN);
 
-  // Wake up at 45°
+  // Wake servo up at 45° immediately
   servo.write(MIN_ANGLE);
   currentAngle = MIN_ANGLE;
 
@@ -52,7 +52,7 @@ void setup() {
 void loop() {
   int buttonState = digitalRead(BUTTON_PIN);
 
-  // Start test
+  // Start test on button press
   if (buttonState == HIGH && lastButtonState == LOW && !testRunning) {
     Serial.println("Starting 60-second motion test");
     testRunning = true;
@@ -60,7 +60,7 @@ void loop() {
     segmentStartTime = millis();
     currentSegment = SEG1;
 
-    servo.write(MIN_ANGLE);  // ensure exact start
+    servo.write(MIN_ANGLE);
     currentAngle = MIN_ANGLE;
   }
   lastButtonState = buttonState;
@@ -69,6 +69,7 @@ void loop() {
 
   unsigned long elapsed = millis() - testStartTime;
 
+  // Stop after 60 seconds
   if (elapsed >= 60000UL) {
     Serial.println("Test complete");
     testRunning = false;
@@ -76,27 +77,27 @@ void loop() {
     return;
   }
 
-  // Segment switching
+  // Segment selection
   if (elapsed < 15000UL) {
     setSegment(SEG1);
-    smoothSweep(15);      // slow
+    timeBasedSweep(15000UL, 4);   // Section 1: 4 rotations (slow)
   }
   else if (elapsed < 30000UL) {
     setSegment(SEG2);
-    smoothSweep(6);       // faster
+    timeBasedSweep(15000UL, 8);   // Section 2: same motion, faster
   }
   else if (elapsed < 45000UL) {
     setSegment(SEG3);
-    scriptedJumpAndHold();
+    scriptedJumpAndHold();        // Deterministic jumps with holds
   }
   else {
     setSegment(SEG4);
-    centeredJitter();
+    centeredJitter();             // Jitter centered at 90°
   }
 }
 
 // ------------------------------------------------
-// Segment handling
+// Segment transition handling
 void setSegment(Segment seg) {
   if (seg != currentSegment) {
     currentSegment = seg;
@@ -107,6 +108,7 @@ void setSegment(Segment seg) {
       servo.write(MIN_ANGLE);
       currentAngle = MIN_ANGLE;
     }
+
     if (seg == SEG4) {
       servo.write(CENTER);
       currentAngle = CENTER;
@@ -115,38 +117,42 @@ void setSegment(Segment seg) {
 }
 
 // ------------------------------------------------
-// SEGMENT 1 & 2 – Smooth sweep, different speeds
-void smoothSweep(int stepDelay) {
-  static unsigned long lastUpdate = 0;
-  static int direction = 1;
+// Time-based sweep with guaranteed endpoints
+void timeBasedSweep(unsigned long sectionDurationMs, int numCycles) {
+  unsigned long t = millis() - segmentStartTime;
 
-  if (millis() - lastUpdate < stepDelay) return;
-  lastUpdate = millis();
-
-  currentAngle += direction;
-
-  if (currentAngle >= MAX_ANGLE) {
-    direction = -1;
-  }
-  if (currentAngle <= MIN_ANGLE) {
-    currentAngle = MIN_ANGLE;
-    direction = 1;
-
-    // End sweep cleanly at 45°
+  if (t >= sectionDurationMs) {
     servo.write(MIN_ANGLE);
+    currentAngle = MIN_ANGLE;
     return;
   }
 
-  servo.write(currentAngle);
+  float progress = (float)t / sectionDurationMs;
+
+  float span = MAX_ANGLE - MIN_ANGLE;
+  float totalTravel = numCycles * 2.0 * span;  // back-and-forth motion
+
+  float traveled = progress * totalTravel;
+  float phase = fmod(traveled, 2.0 * span);
+
+  int angle;
+  if (phase <= span) {
+    angle = MIN_ANGLE + phase;          // ascending
+  } else {
+    angle = MAX_ANGLE - (phase - span); // descending
+  }
+
+  servo.write(angle);
+  currentAngle = angle;
 }
 
 // ------------------------------------------------
-// SEGMENT 3 – Deterministic random-looking jumps
+// Section 3: deterministic "random-looking" jumps
 void scriptedJumpAndHold() {
   static unsigned long lastMove = 0;
   static int idx = 0;
 
-  if (millis() - lastMove < 1000) return;
+  if (millis() - lastMove < 1000) return; // 1 second hold
   lastMove = millis();
 
   currentAngle = scriptedPositions[idx];
@@ -156,7 +162,7 @@ void scriptedJumpAndHold() {
 }
 
 // ------------------------------------------------
-// SEGMENT 4 – Jitter centered at 90°
+// Section 4: jitter tightly centered around 90°
 void centeredJitter() {
   static unsigned long lastUpdate = 0;
   static int idx = 0;
