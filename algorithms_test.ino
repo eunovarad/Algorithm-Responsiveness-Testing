@@ -1,4 +1,5 @@
 #include <Servo.h>
+#include <math.h>   // for fmod()
 
 Servo servo;
 
@@ -10,12 +11,13 @@ const int BUTTON_PIN = 2;
 const int MIN_ANGLE = 45;
 const int MAX_ANGLE = 135;
 const int CENTER    = 90;
-const int SYNC_START_ANGLE = CENTER;  // 90
-const int SYNC_END_ANGLE   = 125;
 
+// Signature angles (NEW)
+const int SYNC_START_ANGLE = 110;
+const int SYNC_END_ANGLE   = 70;
 
 // Timing (ms)
-const unsigned long SYNC_DURATION_MS   = 2000;
+const unsigned long SYNC_DURATION_MS   = 2000;  // IMPORTANT: signature lasts ~2s
 const unsigned long SYNC_PAUSE_MS      = 1000;
 const unsigned long MOVE_TO_START_MS   = 1000;
 
@@ -59,6 +61,7 @@ Phase phase = WAIT_FOR_BUTTON;
 unsigned long phaseStart = 0;
 
 int currentAngle = CENTER;
+int moveStartAngle = CENTER;     // captures start angle for MOVE_TO_START ramp
 int lastButtonState = LOW;
 
 // For SEG3 + SEG4 indexing
@@ -73,6 +76,11 @@ void enterPhase(Phase p) {
   phase = p;
   phaseStart = millis();
 
+  // capture ramp start when entering MOVE_TO_START
+  if (p == MOVE_TO_START) {
+    moveStartAngle = currentAngle;
+  }
+
   // Optional debug prints (helps validate timing)
   Serial.print("PHASE: ");
   Serial.print((int)phase);
@@ -86,18 +94,7 @@ void writeAngle(int a) {
   currentAngle = a;
 }
 
-void rampToAngle(int target, unsigned long durationMs) {
-  // Linear interpolation based on elapsed time in this phase
-  unsigned long t = millis() - phaseStart;
-  if (t >= durationMs) {
-    writeAngle(target);
-    return;
-  }
-  float u = (float)t / (float)durationMs;
-  int a = (int)(currentAngle + (target - currentAngle) * u);
-  writeAngle(a);
-}
-
+// Time-based sweep with guaranteed endpoints
 int sweepAngle(unsigned long sectionDurationMs, int numCycles) {
   unsigned long t = millis() - phaseStart;
   if (t >= sectionDurationMs) return MIN_ANGLE;
@@ -123,9 +120,9 @@ void setup() {
   servo.attach(SERVO_PIN);
 
   Serial.begin(9600);
-  Serial.println("Ready. Servo parked at 90°. Start HoloLens, then press button ~3s later.");
+  Serial.println("Ready. Servo parked at SYNC_START_ANGLE. Start HoloLens, then press button ~3s later.");
 
-  writeAngle(CENTER); // park at 90 so sync signature is obvious
+  writeAngle(SYNC_START_ANGLE); // initialize to limit "catching up"
   enterPhase(WAIT_FOR_BUTTON);
 }
 
@@ -137,15 +134,18 @@ void loop() {
   if (phase == WAIT_FOR_BUTTON) {
     if (buttonState == HIGH && lastButtonState == LOW) {
       Serial.println("Button pressed — starting sequence.");
-      // reset helpers
+
+      // reset helpers for later segments
       seg3Index = 0;
       lastJumpChange = 0;
       seg4Index = 0;
       lastJitterUpdate = 0;
 
-      // Start sync immediately
+      // Start signature immediately at SYNC_START_ANGLE
+      writeAngle(SYNC_START_ANGLE);
       enterPhase(SYNC_SIGNAL);
     }
+
     lastButtonState = buttonState;
     return;
   }
@@ -158,44 +158,38 @@ void loop() {
     case SYNC_SIGNAL: {
       unsigned long elapsed = millis() - phaseStart;
 
+      // Signature: slow, one-direction swivel over ~2 seconds
       if (elapsed >= SYNC_DURATION_MS) {
-        // End of sync phase: park back at center and move on
-        writeAngle(CENTER);
+        writeAngle(SYNC_END_ANGLE);
         enterPhase(SYNC_PAUSE);
         break;
       }
 
-      // Linear one-direction swivel from 90 -> SYNC_END_ANGLE over 2 seconds
-      float u = (float)elapsed / (float)SYNC_DURATION_MS;   // 0..1
+      float u = (float)elapsed / (float)SYNC_DURATION_MS;  // 0..1
       int angle = (int)(SYNC_START_ANGLE + (SYNC_END_ANGLE - SYNC_START_ANGLE) * u);
-
       writeAngle(angle);
       break;
     }
 
-
     case SYNC_PAUSE: {
-      // hold at 90 for 1s
-      writeAngle(CENTER);
+      // hold at end of signature for 1 second
+      writeAngle(SYNC_END_ANGLE);
       if (millis() - phaseStart >= SYNC_PAUSE_MS) {
-        // begin transition toward 45
-        // NOTE: capture starting angle for ramp: we set currentAngle to 90 above
         enterPhase(MOVE_TO_START);
       }
       break;
     }
 
     case MOVE_TO_START: {
-      // Smooth deterministic ramp to 45 over 1s budget
-      // (Servo may physically lag; this is still a consistent command schedule)
+      // Smooth deterministic ramp from current angle (captured) to 45° over 1s
       unsigned long t = millis() - phaseStart;
+
       if (t >= MOVE_TO_START_MS) {
         writeAngle(MIN_ANGLE);
         enterPhase(SEG1_SWEEP);
       } else {
-        // linearly ramp from 90 to 45
         float u = (float)t / (float)MOVE_TO_START_MS;
-        int a = (int)(CENTER + (MIN_ANGLE - CENTER) * u);
+        int a = (int)(moveStartAngle + (MIN_ANGLE - moveStartAngle) * u);
         writeAngle(a);
       }
       break;
@@ -204,6 +198,7 @@ void loop() {
     case SEG1_SWEEP: {
       int a = sweepAngle(SEG1_MS, SEG1_CYCLES);
       writeAngle(a);
+
       if (millis() - phaseStart >= SEG1_MS) {
         writeAngle(MIN_ANGLE);
         enterPhase(SEG2_SWEEP);
@@ -214,6 +209,7 @@ void loop() {
     case SEG2_SWEEP: {
       int a = sweepAngle(SEG2_MS, SEG2_CYCLES);
       writeAngle(a);
+
       if (millis() - phaseStart >= SEG2_MS) {
         writeAngle(MIN_ANGLE);
         enterPhase(SEG3_JUMP_HOLD);
@@ -258,8 +254,8 @@ void loop() {
     }
 
     case DONE: {
-      Serial.println("Sequence complete. Parking at 90°.");
-      writeAngle(CENTER);
+      Serial.println("Sequence complete. Parking at signature start angle.");
+      writeAngle(SYNC_START_ANGLE);
       enterPhase(WAIT_FOR_BUTTON);
       break;
     }
