@@ -10,6 +10,9 @@ const int BUTTON_PIN = 2;
 const int MIN_ANGLE = 45;
 const int MAX_ANGLE = 135;
 const int CENTER    = 90;
+const int SYNC_START_ANGLE = CENTER;  // 90
+const int SYNC_END_ANGLE   = 125;
+
 
 // Timing (ms)
 const unsigned long SYNC_DURATION_MS   = 2000;
@@ -64,14 +67,6 @@ unsigned long lastJumpChange = 0;
 
 int seg4Index = 0;
 unsigned long lastJitterUpdate = 0;
-
-// For sync signal pattern
-int syncIndex = 0;
-unsigned long lastSyncStep = 0;
-const unsigned long SYNC_STEP_MS = 150;
-// “Distinct” sync pattern centered around 90
-const int syncPattern[] = { 90, 120, 60, 110, 70, 90 };
-const int SYNC_LEN = sizeof(syncPattern) / sizeof(syncPattern[0]);
 
 // ---------- Helpers ----------
 void enterPhase(Phase p) {
@@ -143,8 +138,6 @@ void loop() {
     if (buttonState == HIGH && lastButtonState == LOW) {
       Serial.println("Button pressed — starting sequence.");
       // reset helpers
-      syncIndex = 0;
-      lastSyncStep = 0;
       seg3Index = 0;
       lastJumpChange = 0;
       seg4Index = 0;
@@ -165,19 +158,21 @@ void loop() {
     case SYNC_SIGNAL: {
       unsigned long elapsed = millis() - phaseStart;
 
-      // step through pattern at fixed cadence
-      if (millis() - lastSyncStep >= SYNC_STEP_MS) {
-        lastSyncStep = millis();
-        writeAngle(syncPattern[syncIndex]);
-        syncIndex = (syncIndex + 1) % SYNC_LEN;
-      }
-
       if (elapsed >= SYNC_DURATION_MS) {
+        // End of sync phase: park back at center and move on
         writeAngle(CENTER);
         enterPhase(SYNC_PAUSE);
+        break;
       }
+
+      // Linear one-direction swivel from 90 -> SYNC_END_ANGLE over 2 seconds
+      float u = (float)elapsed / (float)SYNC_DURATION_MS;   // 0..1
+      int angle = (int)(SYNC_START_ANGLE + (SYNC_END_ANGLE - SYNC_START_ANGLE) * u);
+
+      writeAngle(angle);
       break;
     }
+
 
     case SYNC_PAUSE: {
       // hold at 90 for 1s
