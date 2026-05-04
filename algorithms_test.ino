@@ -32,7 +32,7 @@ const int SEG2_CYCLES = 2;   // CHANGED: was 4, now slower and more useful
 
 // Segment 3 scripted “random-looking” positions
 const int scriptedPositions[] = {
-  52, 128, 67, 111, 59, 134, 76,
+  52, 100, 67, 111, 59, 121, 76,
   98, 121, 63, 110, 85
 };
 const int NUM_SCRIPTED = sizeof(scriptedPositions) / sizeof(scriptedPositions[0]);
@@ -41,13 +41,14 @@ const unsigned long JUMP_HOLD_MS = 1000;
 // Segment 4 micro-adjustment pattern
 // Small, fast, tightly concentrated "needle line-up" corrections
 const int microAdjustPattern[] = {
-   0,  2,  4,  3,  5,  4,  2,  1,
-   0, -1,  0,  1,  3,  2,  0, -2,
-  -3, -1,  0,  2,  1,  0,  1,  3,
-   2,  1,  0, -1,  0,  1
+   0,  0,  1,  1,  2,  2,  3,  3,
+   2,  2,  1,  1,  0,  0,
+  -1, -1, -2, -2, -1, -1,
+   0,  0,  1,  1,  2,  2,
+   1,  1,  0,  0
 };
 const int MICRO_LEN = sizeof(microAdjustPattern) / sizeof(microAdjustPattern[0]);
-const unsigned long MICRO_UPDATE_MS = 120;
+const unsigned long MICRO_UPDATE_MS = 300;
 // --------------------------------------------
 
 // State machine
@@ -125,7 +126,7 @@ void microAdjust() {
   lastMicroUpdate = millis();
 
   int target = CENTER + microAdjustPattern[seg4Index];
-  target = constrain(target, CENTER - 8, CENTER + 8);   // tightly concentrated
+  target = constrain(target, CENTER - 5, CENTER + 5);   // tightly concentrated
   writeAngle(target);
 
   seg4Index = (seg4Index + 1) % MICRO_LEN;
