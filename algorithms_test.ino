@@ -17,20 +17,21 @@ const int SYNC_START_ANGLE = 110;
 const int SYNC_END_ANGLE   = 70;
 
 // Timing (ms)
-const unsigned long SYNC_DURATION_MS   = 2000;  // signature lasts ~2s
+const unsigned long SYNC_DURATION_MS   = 2000;  // signature lasts ~2s total
 const unsigned long SYNC_PAUSE_MS      = 1000;
 const unsigned long MOVE_TO_START_MS   = 1000;
 
 const unsigned long SEG1_MS = 15000;  // slow sweep
-const unsigned long SEG2_MS = 10000;  // moderate sweep (reduced difficulty)
+const unsigned long SEG2_MS = 10000;  // moderate sweep
 const unsigned long SEG3_MS = 15000;  // jump + hold
 const unsigned long SEG4_MS = 8000;   // micro-adjustments
 
 // Sweep cycles
 const int SEG1_CYCLES = 2;
-const int SEG2_CYCLES = 2;   // CHANGED: was 4, now slower and more useful
+const int SEG2_CYCLES = 2;
 
 // Segment 3 scripted “random-looking” positions
+// Updated to be less extreme
 const int scriptedPositions[] = {
   52, 100, 67, 111, 59, 121, 76,
   98, 121, 63, 110, 85
@@ -39,7 +40,7 @@ const int NUM_SCRIPTED = sizeof(scriptedPositions) / sizeof(scriptedPositions[0]
 const unsigned long JUMP_HOLD_MS = 1000;
 
 // Segment 4 micro-adjustment pattern
-// Small, fast, tightly concentrated "needle line-up" corrections
+// Slow, deliberate, tightly concentrated drifts + holds
 const int microAdjustPattern[] = {
    0,  0,  1,  1,  2,  2,  3,  3,
    2,  2,  1,  1,  0,  0,
@@ -120,7 +121,7 @@ int sweepAngle(unsigned long sectionDurationMs, int numCycles) {
   }
 }
 
-// Segment 4: simulated needle line-up micro adjustments
+// Segment 4: simulated careful needle line-up micro adjustments
 void microAdjust() {
   if (millis() - lastMicroUpdate < MICRO_UPDATE_MS) return;
   lastMicroUpdate = millis();
@@ -140,7 +141,8 @@ void setup() {
   Serial.begin(9600);
   Serial.println("Ready. Servo parked at signature start angle. Start HoloLens, then press button ~3s later.");
 
-  writeAngle(SYNC_START_ANGLE);   // important for repeatable starts
+  // Important: park at sync start angle so repeated runs do not have a catch-up jump
+  writeAngle(SYNC_START_ANGLE);
   enterPhase(WAIT_FOR_BUTTON);
 }
 
@@ -159,7 +161,7 @@ void loop() {
       seg4Index = 0;
       lastMicroUpdate = 0;
 
-      // Start signature immediately at 110°
+      // Start signature immediately at SYNC_START_ANGLE
       writeAngle(SYNC_START_ANGLE);
       enterPhase(SYNC_SIGNAL);
     }
@@ -198,7 +200,7 @@ void loop() {
     }
 
     case MOVE_TO_START: {
-      // Smooth ramp from current angle to 45° over 1s
+      // Smooth deterministic ramp from current angle to 45° over 1s
       unsigned long t = millis() - phaseStart;
 
       if (t >= MOVE_TO_START_MS) {
