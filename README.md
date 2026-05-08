@@ -1,10 +1,10 @@
-## algorithms_test.ino
+# algorithms_test.ino
 - Control of servo logic for a 60 second "continuous testing" session. It features a time syncing signature and four different test sections (slow sweep, fast sweep, move and hold, small corrections)
 
-## demo_videos.ino
+# demo_videos.ino
 - A shortened version meant to run only one test section at a time for the purpose of video analysis. No sync signature is included
 
-# algorithms_test.ino timing and structure: After pressing button one, the following sequence takes place:
+### algorithms_test.ino timing and structure: After pressing button one, the following sequence takes place:
 <0 → PRE	
 <2000 → SYNC	
 <3000 → SYNC PAUSE	
